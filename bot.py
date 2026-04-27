@@ -135,19 +135,6 @@ class DatabaseManager:
             """)
             
             self.execute("""
-                CREATE TABLE IF NOT EXISTS schedule (
-                    id SERIAL PRIMARY KEY,
-                    class TEXT NOT NULL,
-                    day TEXT NOT NULL,
-                    lesson_number INTEGER,
-                    subject TEXT,
-                    teacher TEXT,
-                    room TEXT,
-                    UNIQUE(class, day, lesson_number)
-                )
-            """)
-            
-            self.execute("""
                 CREATE TABLE IF NOT EXISTS bell_schedule (
                     lesson_number INTEGER PRIMARY KEY,
                     start_time TEXT NOT NULL,
@@ -302,84 +289,6 @@ class DatabaseManager:
             logger.info("✅ Дублирующиеся достижения очищены")
         except Exception as e:
             logger.error(f"❌ Ошибка очистки дубликатов: {e}")
-
-    def add_student_to_roster(self, class_name, full_name):
-            """Добавить ученика в официальный список класса"""
-            try:
-                self.execute(
-                    "INSERT INTO class_rosters (class, full_name) VALUES (?, ?) ON CONFLICT (class, full_name) DO NOTHING",
-                    (class_name.upper(), full_name.strip())
-                )
-                return True
-            except Exception as e:
-                logger.error(f"Ошибка добавления ученика в список: {e}")
-                return False
-
-    def remove_student_from_roster(self, class_name, full_name):
-            """Удалить ученика из официального списка класса"""
-            try:
-                self.execute(
-                    "DELETE FROM class_rosters WHERE class = ? AND full_name = ?",
-                    (class_name.upper(), full_name.strip())
-                )
-                return True
-            except Exception as e:
-                logger.error(f"Ошибка удаления ученика из списка: {e}")
-                return False
-
-    def get_students_by_class(self, class_name):
-            """Получить список учеников класса"""
-            try:
-                result = self.fetchall(
-                    "SELECT full_name FROM class_rosters WHERE class = ? ORDER BY full_name",
-                    (class_name.upper(),)
-                )
-                return [row[0] for row in result]
-            except Exception as e:
-                logger.error(f"Ошибка получения списка учеников: {e}")
-                return []
-
-    def check_student_in_roster(self, class_name, full_name):
-            """Проверить, есть ли ученик в официальном списке класса"""
-            try:
-                result = self.fetchone(
-                    "SELECT 1 FROM class_rosters WHERE class = ? AND full_name = ?",
-                    (class_name.upper(), full_name.strip())
-                )
-                return result is not None
-            except Exception as e:
-                logger.error(f"Ошибка проверки ученика: {e}")
-                return False
-
-    def import_roster_from_excel(self, file_content):
-            """Импорт списков учеников из Excel файла"""
-            try:
-                import pandas as pd
-                
-                # Считываем Excel
-                df = pd.read_excel(io.BytesIO(file_content))
-                
-                added_count = 0
-                error_count = 0
-                
-                for _, row in df.iterrows():
-                    try:
-                        if len(row) >= 2:
-                            class_name = str(row[0]).strip().upper()
-                            full_name = str(row[1]).strip()
-                            
-                            if self.is_valid_class(class_name) and full_name:
-                                self.add_student_to_roster(class_name, full_name)
-                                added_count += 1
-                    except Exception as e:
-                        error_count += 1
-                        logger.error(f"Ошибка импорта строки {row}: {e}")
-                
-                return True, f"✅ Импортировано {added_count} учеников, ошибок: {error_count}"
-                
-            except Exception as e:
-                logger.error(f"Ошибка импорта списка учеников: {e}")
-                return False, f"❌ Ошибка импорта: {str(e)}"
 
 class RateLimiter:
     def __init__(self, max_requests=MAX_REQUESTS_PER_MINUTE, window=60):
@@ -2550,21 +2459,7 @@ class SimpleSchoolBot:
         
         full_name = parts[0].strip()
         class_name = parts[1].strip().upper()
-
-        if not self.db.check_student_in_roster(class_name, full_name):
-            self.send_message(
-                chat_id,
-                f"❌ <b>Проверка не пройдена</b>\n\n"
-                f"ФИО: {full_name}\n"
-                f"Класс: {class_name}\n\n"
-                f"Ваших данных нет в официальном списке учеников.\n\n"
-                f"<b>Возможные причины:</b>\n"
-                f"1. Ошибка в написании ФИО\n"
-                f"2. Вы указали неверный класс\n"
-                f"3. Ваши данные еще не добавлены в систему\n\n"
-                f"Обратитесь к классному руководителю или администратору."
-            )
-            return     
+    
         
         if not self.is_valid_fullname(full_name):
             self.send_message(chat_id, "❌ Неверный формат ФИО")
